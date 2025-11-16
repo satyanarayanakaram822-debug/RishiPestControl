@@ -3367,116 +3367,175 @@ section:nth-child(8) { animation-delay: 0.8s; opacity: 0; animation-fill-mode: f
         <p style="text-align: center; color: var(--text-secondary); font-weight: 500;">&copy; 2025 Rishi Pest Control. All Rights Reserved</p>
     </div>
 </footer>
-
 <script>
-// Navigation functionality
-function navigateTo(pageId) {
-    // Hide all pages
-    const pages = document.querySelectorAll('.page');
-    pages.forEach(page => page.classList.remove('active'));
-    
-    // Show selected page
-    const selectedPage = document.getElementById(pageId);
-    if (selectedPage) {
-        selectedPage.classList.add('active');
-    }
-    
-    // Update active nav link
-    const navLinks = document.querySelectorAll('.nav-link');
-    navLinks.forEach(link => link.classList.remove('active'));
-    
-    // Scroll to top
-    window.scrollTo(0, 0);
-    
-    // Close mobile menu if open
-    const mobileMenu = document.getElementById('mobileMenu');
-    if (mobileMenu) {
-        mobileMenu.classList.remove('active');
-    }
-}
+// --- Navigation & SPA history support ---
+function navigateTo(pageId, options = {}) {
+  // Hide all pages
+  const pages = document.querySelectorAll('.page');
+  pages.forEach(page => page.classList.remove('active'));
 
-function scrollToServices() {
-    navigateTo('home');
-    setTimeout(() => {
-        const servicesSection = document.getElementById('servicesSection');
-        if (servicesSection) {
-            servicesSection.scrollIntoView({ behavior: 'smooth' });
-        }
-    }, 100);
-}
-
-
-
-function handleSubmit(event) {
-    event.preventDefault();
-    const name = document.getElementById('name').value;
-    const email = document.getElementById('email').value;
-    const phone = document.getElementById('phone').value;
-    const service = document.getElementById('service').value;
-    const message = document.getElementById('message').value;
-    
-    alert(`Thank you, ${name}! We have received your request for ${service}. We will contact you shortly at ${phone}.`);
-    
-    // Reset form
-    event.target.reset();
-}
-
-// Update navigation links on click
-document.addEventListener('DOMContentLoaded', function() {
-    const navLinks = document.querySelectorAll('.nav-link');
-    navLinks.forEach(link => {
-        link.addEventListener('click', function() {
-            navLinks.forEach(l => l.classList.remove('active'));
-            this.classList.add('active');
-            
-            // Close mobile menu when a link is clicked
-            const mobileMenu = document.getElementById('mobileMenu');
-            if (mobileMenu && mobileMenu.classList.contains('active')) {
-                mobileMenu.classList.remove('active');
-            }
-        });
-    });
-    
-    // Close menu when clicking outside
-    document.addEventListener('click', function(event) {
-        const mobileMenu = document.getElementById('mobileMenu');
-        const hamburgerBtn = document.getElementById('hamburgerBtn');
-        const navbar = document.querySelector('.navbar');
-        
-        if (mobileMenu && !navbar.contains(event.target) && mobileMenu.classList.contains('active')) {
-            mobileMenu.classList.remove('active');
-        }
-    });
-});
-   
-
-// Toggle mobile menu
-function toggleMenu() {
-    const mobileMenu = document.getElementById('mobileMenu');
-    if (mobileMenu) {
-        mobileMenu.classList.toggle('active');
-    }
-}
-  if ('scrollRestoration' in history) {
-    history.scrollRestoration = 'manual';
+  // Show selected page
+  const selectedPage = document.getElementById(pageId);
+  if (selectedPage) {
+    selectedPage.classList.add('active');
   }
 
-  // Ensure page starts at top on load
-  window.addEventListener('DOMContentLoaded', () => {
-    // Small timeout helps in some browsers to override built-in behaviour
-    setTimeout(() => window.scrollTo(0, 0), 10);
-  });
+  // Update active nav link
+  updateActiveNav(pageId);
 
-  // Also reset scroll just before the page is unloaded (helps some browsers)
-  window.addEventListener('beforeunload', () => {
+  // Reset scroll to top for the new page
+  // allow optional smooth scroll to a subsection via options.scrollToId
+  if (options.scrollToId) {
+    // If caller needs to scroll to an internal section after showing page
+    setTimeout(() => {
+      const target = document.getElementById(options.scrollToId);
+      if (target) target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }, 120);
+  } else {
     window.scrollTo(0, 0);
+  }
+
+  // Close mobile menu if open
+  const mobileMenu = document.getElementById('mobileMenu');
+  if (mobileMenu) mobileMenu.classList.remove('active');
+
+  // Push a history state so browser back/forward works
+  try {
+    // Avoid pushing duplicate consecutive states
+    const currentState = history.state && history.state.page;
+    if (currentState !== pageId) {
+      history.pushState({ page: pageId }, "", `#${pageId}`);
+    }
+  } catch (e) {
+    // ignore (some browsers with older behavior)
+    console.warn("history.pushState failed", e);
+  }
+}
+
+// Restore nav active class based on page id
+function updateActiveNav(pageId) {
+  const navLinks = document.querySelectorAll('.nav-link');
+  navLinks.forEach(link => {
+    // Expect links to have data-target or href="#pageId"
+    const target = link.dataset.target || (link.getAttribute('href') && link.getAttribute('href').replace('#', ''));
+    if (target === pageId) {
+      link.classList.add('active');
+    } else {
+      link.classList.remove('active');
+    }
+  });
+}
+
+// Handle browser back/forward buttons
+window.onpopstate = function(event) {
+  const pageId = (event.state && event.state.page) || location.hash.replace('#', '') || 'home';
+  // Hide all and show the page
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+  const el = document.getElementById(pageId);
+  if (el) el.classList.add('active');
+
+  // Update nav state
+  updateActiveNav(pageId);
+
+  // scroll to top when navigating via back/forward
+  setTimeout(() => window.scrollTo(0, 0), 50);
+};
+
+// If old nav links call navigateTo directly (without data-target), attach listeners
+document.addEventListener('DOMContentLoaded', function() {
+  // Initialize nav link clicks to use navigateTo
+  const navLinks = document.querySelectorAll('.nav-link');
+  navLinks.forEach(link => {
+    link.addEventListener('click', function(e) {
+      // If link has href="#page", prevent default and use navigateTo
+      const href = link.getAttribute('href') || '';
+      const dataTarget = link.dataset.target;
+      if (href.startsWith('#') || dataTarget) {
+        e.preventDefault();
+        const pageId = dataTarget || href.replace('#', '');
+        // update classes
+        navLinks.forEach(l => l.classList.remove('active'));
+        link.classList.add('active');
+
+        // close mobile menu if open
+        const mobileMenu = document.getElementById('mobileMenu');
+        if (mobileMenu && mobileMenu.classList.contains('active')) {
+          mobileMenu.classList.remove('active');
+        }
+
+        // navigate
+        navigateTo(pageId);
+      }
+    });
   });
 
+  // Close menu when clicking outside
+  document.addEventListener('click', function(event) {
+    const mobileMenu = document.getElementById('mobileMenu');
+    const hamburgerBtn = document.getElementById('hamburgerBtn');
+    const navbar = document.querySelector('.navbar');
+    if (mobileMenu && !navbar.contains(event.target) && mobileMenu.classList.contains('active')) {
+      mobileMenu.classList.remove('active');
+    }
+  });
+
+  // On load: show page from hash or history or default to 'home'
+  const initialPage = (history.state && history.state.page) || location.hash.replace('#', '') || 'home';
+  // Replace initial history state so popstate has consistent state object
+  history.replaceState({ page: initialPage }, "", `#${initialPage}`);
+  // Show the initial page
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+  const startEl = document.getElementById(initialPage) || document.getElementById('home');
+  if (startEl) startEl.classList.add('active');
+  updateActiveNav(initialPage);
+
+  // attach click handlers for any elements that call navigateTo from code elsewhere
+  // (if you use inline onclick="navigateTo('contact')" this will continue to work)
+});
+
+// scroll restoration: prevent browser restoring previous scroll on refresh/back
+if ('scrollRestoration' in history) {
+  history.scrollRestoration = 'manual';
+}
+window.addEventListener('DOMContentLoaded', () => {
+  setTimeout(() => window.scrollTo(0, 0), 10);
+});
+window.addEventListener('beforeunload', () => {
+  window.scrollTo(0, 0);
+});
+
+// --- Form submit handler (keeps your original behavior) ---
+function handleSubmit(event) {
+  event.preventDefault();
+  const name = document.getElementById('name').value;
+  const email = document.getElementById('email').value;
+  const phone = document.getElementById('phone').value;
+  const service = document.getElementById('service').value;
+  // if message field exists
+  const messageEl = document.getElementById('message');
+  const message = messageEl ? messageEl.value : '';
+
+  alert(`Thank you, ${name}! We have received your request for ${service}. We will contact you shortly at ${phone}.`);
+  event.target.reset();
+}
+
+// --- Mobile menu toggle ---
+function toggleMenu() {
+  const mobileMenu = document.getElementById('mobileMenu');
+  if (mobileMenu) mobileMenu.classList.toggle('active');
+}
+
+// Optional goBack (still works if needed)
+function goBack() {
+  window.history.back();
+}
 </script>
+
 
 </body>
 
 </html>
+
 
 
 
